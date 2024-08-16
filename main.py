@@ -1,5 +1,8 @@
 import pygame
 import os
+from math import sqrt, sin, pi
+
+# init pygame
 
 pygame.init()
 
@@ -7,6 +10,8 @@ pygame.display.set_caption("Multilayer Maze")
 screen = pygame.display.set_mode((600, 600))
 clock = pygame.time.Clock()
 running = True
+
+# init lvls
 
 lvls = []
 
@@ -21,6 +26,8 @@ for lvl_file in os.listdir("levels"):
     lvls.append(lvl)
     print(f"Loaded {lvl_file}")
 
+# init game vars
+
 ball_pos = (1, 1)
 selected_lvl = 1
 mouse_prev_pressed = pygame.mouse.get_pressed()
@@ -30,19 +37,30 @@ layer_direction = "lower"
 animate_layer = False
 animate = False
 COOLDOWN = 10
+BALL_RADIUS = 16
+DOT_RADIUS = 5
+STANDARD_OFFSET = sqrt(BALL_RADIUS ** 2 - DOT_RADIUS ** 2)
 stage = "menu"
 ball_depth = 0
 maze_inited = False
+
+# game util funcs
 
 def place_center(screen, object, pos):
   screen.blit(
       object,
       (pos[0] - object.get_width() // 2, pos[1] - object.get_height() // 2))
 
+# main loop
+
 while running:
+
+  # events, used for close window only
   for event in pygame.event.get():
     if event.type == pygame.QUIT:
       running = False
+
+  # game stages
 
   if stage == "menu":
     screen.fill("black")
@@ -76,12 +94,15 @@ while running:
     mouse_pressed = pygame.mouse.get_pressed()
 
     if not mouse_pressed[0] and mouse_prev_pressed:
+      # prev lvl
       if 225 < mouse_pos[0] < 250 and 315 < mouse_pos[1] < 335:
         if selected_lvl > 1:
           selected_lvl -= 1
+      # next lvl
       elif 350 < mouse_pos[0] < 375 and 315 < mouse_pos[1] < 335:
         if len(lvls) > selected_lvl:
           selected_lvl += 1
+      # start game
       elif 250 < mouse_pos[0] < 350 and 400 < mouse_pos[1] < 440:
         maze_inited = False
         stage = "game"
@@ -111,6 +132,7 @@ while running:
 
       maze_inited = True
 
+    # init current layer
     layer = lvl[ball_depth]
     has_next_layer = ball_depth < len(lvl) - 1
     has_prev_layer = ball_depth > 0
@@ -129,8 +151,9 @@ while running:
           return True
       return False
 
+    # draw map without ball
     def generate_layer_map(screen: pygame.Surface):
-      # draw map
+      # draw maze
       screen.fill("black")
 
       for y, row in enumerate(layer):
@@ -143,7 +166,7 @@ while running:
             if can_go_next_layer(x, y):
               pygame.draw.rect(screen, "orange", (x * 40, y * 40, 40, 40))
 
-      # draw depth
+      # draw depth (segmented lines)
       if ball_depth > 0:
         prev_layer = lvl[ball_depth - 1]
         for y, row in enumerate(prev_layer):
@@ -188,7 +211,7 @@ while running:
     if animate_layer and key_press_cd > 0:
       current_layer_map = generate_layer_map(screen.copy())
       screen.fill("black")
-      animation_frame = 11 - key_press_cd
+      animation_frame = 10 - key_press_cd
       if layer_direction == "lower":
         prev_layer_map.set_alpha(int(255 - animation_frame * 25.5))
         place_center(
@@ -222,29 +245,94 @@ while running:
       prev_layer_map = generate_layer_map(screen)
 
     # draw ball
-    if animate and key_press_cd > 0:
-      animation_frame = 11 - key_press_cd
-      if direction == "up":
-        pygame.draw.circle(screen, "dodgerblue",
-                           (ball_pos[0] * 40 + 20,
-                            ball_pos[1] * 40 + 60 - animation_frame * 4), 16)
-      if direction == "down":
-        pygame.draw.circle(screen, "dodgerblue",
-                           (ball_pos[0] * 40 + 20,
-                            ball_pos[1] * 40 - 20 + animation_frame * 4), 16)
-      if direction == "right":
-        pygame.draw.circle(screen, "dodgerblue",
-                           (ball_pos[0] * 40 - 20 + animation_frame * 4,
-                            ball_pos[1] * 40 + 20), 16)
-      if direction == "left":
-        pygame.draw.circle(screen, "dodgerblue",
-                           (ball_pos[0] * 40 + 60 - animation_frame * 4,
-                            ball_pos[1] * 40 + 20), 16)
-    else:
-      animate = False
-      pygame.draw.circle(screen, "dodgerblue",
-                         (ball_pos[0] * 40 + 20, ball_pos[1] * 40 + 20), 16)
+    def get_ball_draw_center():
+      if animate and key_press_cd > 0:
+        animation_frame = 10 - key_press_cd
+        if direction == "up":
+          return (ball_pos[0] * 40 + 20, ball_pos[1] * 40 + 60 - animation_frame * 4)
+        if direction == "down":
+          return (ball_pos[0] * 40 + 20, ball_pos[1] * 40 - 20 + animation_frame * 4)
+        if direction == "right":
+          return (ball_pos[0] * 40 - 20 + animation_frame * 4, ball_pos[1] * 40 + 20)
+        if direction == "left":
+          return (ball_pos[0] * 40 + 60 - animation_frame * 4, ball_pos[1] * 40 + 20)
+      return (ball_pos[0] * 40 + 20, ball_pos[1] * 40 + 20)
 
+    # order: top, left, bottom, right, center, back
+    def calc_dot_centers():
+      x, y = get_ball_draw_center()
+      if animate and key_press_cd > 0:
+        animation_frame = 10 - key_press_cd
+        offset = abs(STANDARD_OFFSET * sin(animation_frame * 0.05 * pi))
+        if direction == "up":
+          left = (x - STANDARD_OFFSET, y)
+          right = (x + STANDARD_OFFSET, y)
+          top = (x, y - offset)
+          bottom = None
+          center = (x, y + STANDARD_OFFSET - offset)
+          back = (x, y - STANDARD_OFFSET + offset)
+          if animation_frame > 2:
+            back = None
+          if animation_frame > 4:
+            bottom = (x, y + offset)
+        elif direction == "down":
+          left = (x - STANDARD_OFFSET, y)
+          right = (x + STANDARD_OFFSET, y)
+          top = None
+          bottom = (x, y + offset)
+          center = (x, y - STANDARD_OFFSET + offset)
+          back = (x, y + STANDARD_OFFSET - offset)
+          if animation_frame > 2:
+            back = None
+          if animation_frame > 4:
+            top = (x, y - offset)
+        elif direction == "right":
+          top = (x, y - STANDARD_OFFSET)
+          bottom = (x, y + STANDARD_OFFSET)
+          left = None
+          right = (x + offset, y)
+          center = (x - STANDARD_OFFSET + offset, y)
+          back = (x + STANDARD_OFFSET - offset, y)
+          if animation_frame > 2:
+            back = None
+          if animation_frame > 4:
+            left = (x - offset, y)
+        elif direction == "left":
+          top = (x, y - STANDARD_OFFSET)
+          bottom = (x, y + STANDARD_OFFSET)
+          left = (x - offset, y)
+          right = None
+          center = (x + STANDARD_OFFSET - offset, y)
+          back = (x - STANDARD_OFFSET + offset, y)
+          if animation_frame > 2:
+            back = None
+          if animation_frame > 4:
+            right = (x + offset, y)
+        return (top, left, bottom, right, center, back)
+      top = (x, y - STANDARD_OFFSET)
+      left = (x - STANDARD_OFFSET, y)
+      bottom = (x, y + STANDARD_OFFSET)
+      right = (x + STANDARD_OFFSET, y)
+      center = (x, y)
+      back = None
+      return (top, left, bottom, right, center, back)
+
+    ball_surface = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
+    ball_center = get_ball_draw_center()
+    pygame.draw.circle(ball_surface, "dodgerblue", ball_center, BALL_RADIUS)
+    ball_mask = pygame.mask.from_surface(ball_surface.copy())
+    dots_surface = pygame.Surface(screen.get_size(), pygame.SRCALPHA)
+    for center in calc_dot_centers():
+      if center:
+        pygame.draw.circle(dots_surface, "white", center, DOT_RADIUS)
+    dots_mask = pygame.mask.from_surface(dots_surface)
+    final_dot_mask = ball_mask.overlap_mask(dots_mask, (0, 0))
+    screen.blit(ball_surface, (0, 0))
+    screen.blit(final_dot_mask.to_surface(surface=ball_surface, setcolor="white", unsetcolor=(0, 0, 0, 0)), (0, 0))
+
+    if not animate or key_press_cd <= 0:
+      animate = False
+    
     # draw hint
     if selected_lvl == 1 and find_ball_pos(lvl) == (ball_pos, ball_depth):
       pygame.draw.rect(screen, "salmon", (170, 280, 260, 40), border_radius=10)
@@ -269,6 +357,7 @@ while running:
     pygame.display.flip()
 
     # move ball
+
     x, y = ball_pos
 
     # check for win condition
