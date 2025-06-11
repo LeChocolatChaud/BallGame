@@ -1,6 +1,6 @@
 import pygame
 from math import sqrt
-from tkinter.filedialog import asksaveasfilename
+from tkinter.filedialog import asksaveasfilename, askopenfilename
 
 pygame.init()
 
@@ -16,9 +16,11 @@ end_placed = False
 cursor_pos = (0, 0)
 key_press_cd = 0
 key_prev_pressed = pygame.key.get_pressed()
-stage = "edit"
+stage = "menu"
 update = False
 press_length = {pygame.K_UP: 0, pygame.K_DOWN: 0, pygame.K_LEFT: 0, pygame.K_RIGHT: 0}
+INITIAL_HOLD_THRESHOLD = 30
+hold_threshold = {pygame.K_UP: INITIAL_HOLD_THRESHOLD, pygame.K_DOWN: INITIAL_HOLD_THRESHOLD, pygame.K_LEFT: INITIAL_HOLD_THRESHOLD, pygame.K_RIGHT: INITIAL_HOLD_THRESHOLD}
 COOLDOWN = 1
 BALL_RADIUS = 16
 DOT_RADIUS = 5
@@ -39,8 +41,6 @@ def add_layer(index = None):
   new_layer.append("#" * 15)
   lvl.insert(index, new_layer)
 
-add_layer()
-
 def save_level(lvl):
   with open(asksaveasfilename(defaultextension=".lvl"), "wb") as f:
     for layer in lvl:
@@ -55,6 +55,44 @@ while running:
     if event.type == pygame.QUIT:
       running = False
   
+  if stage == "menu":
+    screen.fill("black")
+
+    font = pygame.font.SysFont("Arial", 30)
+    text1 = font.render("Press n to create new level", True, "white")
+    place_center(screen, text1, (400, 280))
+    text2 = font.render("Press o to load level", True, "white")
+    place_center(screen, text2, (400, 320))
+
+    pygame.display.flip()
+
+    if pygame.key.get_pressed()[pygame.K_n]:
+      lvl = []
+      add_layer()
+      stage = "edit"
+      continue
+    if pygame.key.get_pressed()[pygame.K_o]:
+      filename = askopenfilename(defaultextension=".lvl")
+      if not filename:
+        continue
+      with open(filename, "r") as f:
+        data = f.read()
+        layers = data.split("\n\n")
+        lvl = []
+        for layer in layers:
+          layer = layer.split("\n")
+          lvl.append(layer)
+        print(f"Loaded {f.name}")
+      for d, layer in enumerate(lvl):
+        for y, row in enumerate(layer):
+          for x, cell in enumerate(row):
+            if cell == "o":
+              ball_pos = (x, y, d)
+            if cell == "x":
+              end_placed = True
+      stage = "edit"
+      continue
+
   if stage == "edit":
     screen.fill("black")
 
@@ -251,23 +289,32 @@ while running:
 
     key_pressed = pygame.key.get_pressed()
     if_pressed = lambda x: key_pressed[x] and not key_prev_pressed[x]
-    if_pressed_or_held = lambda x: if_pressed(x) or press_length[x] > 10
-
+    if_held = lambda x: press_length[x] > hold_threshold[x]
+    if_pressed_or_held = lambda x: if_pressed(x) or if_held(x)
+    
     if key_press_cd == 0:
       if if_pressed_or_held(pygame.K_LEFT) and x > 0:
         x -= 1
+        if if_held(pygame.K_LEFT):
+          hold_threshold[pygame.K_LEFT] = COOLDOWN
         press_length[pygame.K_LEFT] = 0
         key_press_cd = COOLDOWN
       elif if_pressed_or_held(pygame.K_RIGHT) and x < 14:
         x += 1
+        if if_held(pygame.K_RIGHT):
+          hold_threshold[pygame.K_RIGHT] = COOLDOWN
         press_length[pygame.K_RIGHT] = 0
         key_press_cd = COOLDOWN
       elif if_pressed_or_held(pygame.K_UP) and y > 0:
         y -= 1
+        if if_held(pygame.K_UP):
+          hold_threshold[pygame.K_UP] = COOLDOWN
         press_length[pygame.K_UP] = 0
         key_press_cd = COOLDOWN
       elif if_pressed_or_held(pygame.K_DOWN) and y < 14:
         y += 1
+        if if_held(pygame.K_DOWN):
+          hold_threshold[pygame.K_DOWN] = COOLDOWN
         press_length[pygame.K_DOWN] = 0
         key_press_cd = COOLDOWN
       elif if_pressed(pygame.K_a) and has_next_layer:
@@ -326,11 +373,15 @@ while running:
           key_press_cd = COOLDOWN
         else:
           save_level(lvl)
+      elif if_pressed(pygame.K_ESCAPE):
+        stage = "pause"
+        key_press_cd = COOLDOWN
     
     for key in press_length:
       if key_pressed[key]:
         press_length[key] += 1
       else:
+        hold_threshold[key] = INITIAL_HOLD_THRESHOLD
         press_length[key] = 0
 
     key_prev_pressed = key_pressed
@@ -403,6 +454,39 @@ while running:
       if key_pressed[pygame.K_ESCAPE]:
         stage = "edit"
         continue
+  
+  if stage == "pause":
+    # dialog
+    pygame.draw.rect(screen, "white", (200, 200, 200, 200), border_radius=10)
+    pygame.draw.rect(screen, "gray", (200, 200, 200, 200), 3)
+
+    # pause text
+    font = pygame.font.SysFont("Arial", 36)
+    pause_text = font.render("Paused", True, "red")
+    place_center(screen, pause_text, (300, 250))
+
+    # resume text
+    font = pygame.font.SysFont("Arial", 20)
+    resume_text = font.render("Press escape to resume", True, "black")
+    place_center(screen, resume_text, (300, 300))
+
+    # menu text
+    font = pygame.font.SysFont("Arial", 20)
+    menu_text = font.render("Press m to return to menu", True, "black")
+    place_center(screen, menu_text, (300, 350))
+
+    pygame.display.flip()
+
+    key_pressed = pygame.key.get_pressed()
+    if_pressed = lambda x: key_pressed[x] and not key_prev_pressed[x]
+
+    if key_press_cd == 0:
+      if if_pressed(pygame.K_ESCAPE):
+        stage = "edit"
+      elif if_pressed(pygame.K_m):
+        stage = "menu"
+
+    key_prev_pressed = key_pressed
 
   if key_press_cd > 0:
     key_press_cd -= 1
